@@ -25,15 +25,21 @@ async def run(server: MCPServerStdio):
         print("\n ===== Response: ", result.final_output)
 
 async def main():
-    async with MCPServerStdio(
-        name = "Inventory Server",
-        params= {
-            "command" : "mcp",
-            "args" : ["run", "mcp_server.py"]
-        },
-    ) as server :
-        print("Starting MCP server")
-        await run(server)
+    try:
+        print("Attempting to start MCP server...")
+        async with MCPServerStdio(
+            name = "Inventory Server",
+            params= {
+                "command" : "C:/Users/pc/Desktop/mcp-demo/.venv/Scripts/python.exe",
+                "args" : ["C:/Users/pc/Desktop/mcp-demo/mcp_server/mcp_server.py"]
+            },
+        ) as server :
+            print("✅ MCP server started successfully!")
+            await run(server)
+    except Exception as e:
+        print(f"❌ Error initializing MCP server: {e}")
+        import traceback
+        traceback.print_exc()
 
 if __name__ == "__main__":
     import asyncio
