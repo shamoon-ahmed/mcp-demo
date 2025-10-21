@@ -1,3 +1,5 @@
 .env
 credentials.json
 __pycache__/
+connection.json
+google_client_secret.json
