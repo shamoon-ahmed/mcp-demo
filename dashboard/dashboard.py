@@ -51,9 +51,95 @@ def decrypt_secret(token: str) -> str:
 @app.get("/", response_class=HTMLResponse)
 def index():
     html = """
-    <h2>Seller Dashboard</h2>
-    <p>Click below to set up your inventory with Google Sheets.</p>
-    <a href="/auth/start">Set up inventory with Google Sheets</a>
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Inventory Dashboard</title>
+        <style>
+            * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+            }
+            
+            body {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                min-height: 100vh;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+            
+            .container {
+                background: white;
+                border-radius: 16px;
+                box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+                padding: 40px;
+                text-align: center;
+                max-width: 500px;
+                width: 90%;
+            }
+            
+            .logo {
+                width: 64px;
+                height: 64px;
+                background: linear-gradient(135deg, #667eea, #764ba2);
+                border-radius: 16px;
+                margin: 0 auto 24px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                color: white;
+                font-size: 24px;
+                font-weight: bold;
+            }
+            
+            h1 {
+                color: #2d3748;
+                font-size: 28px;
+                font-weight: 700;
+                margin-bottom: 12px;
+            }
+            
+            p {
+                color: #718096;
+                font-size: 16px;
+                line-height: 1.6;
+                margin-bottom: 32px;
+            }
+            
+            .btn {
+                background: linear-gradient(135deg, #667eea, #764ba2);
+                color: white;
+                border: none;
+                border-radius: 12px;
+                padding: 16px 32px;
+                font-size: 16px;
+                font-weight: 600;
+                text-decoration: none;
+                display: inline-block;
+                transition: all 0.3s ease;
+                cursor: pointer;
+            }
+            
+            .btn:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 10px 25px rgba(102, 126, 234, 0.4);
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="logo">📊</div>
+            <h1>Inventory Dashboard</h1>
+            <p>Connect your Google Sheets to start managing your inventory with AI-powered insights.</p>
+            <a href="/auth/start" class="btn">Connect Google Sheets</a>
+        </div>
+    </body>
+    </html>
     """
     return HTMLResponse(html)
 
@@ -98,14 +184,120 @@ def auth_callback(request: Request):
     # render simple HTML to choose
     options = "".join([f'<option value="{f["id"]}">{f["name"]}</option>' for f in files])
     html = f"""
-    <h2>Select your inventory sheet</h2>
-    <form method="post" action="/select-sheet">
-      <label>Choose sheet:</label>
-      <select name="sheet_id">{options}</select>
-      <input type="hidden" name="refresh_token" value="{encrypted}" />
-      <br><br>
-      <button type="submit">Save</button>
-    </form>
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Select Inventory Sheet</title>
+        <style>
+            * {{
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+            }}
+            
+            body {{
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                min-height: 100vh;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }}
+            
+            .container {{
+                background: white;
+                border-radius: 16px;
+                box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+                padding: 40px;
+                max-width: 500px;
+                width: 90%;
+            }}
+            
+            .logo {{
+                width: 64px;
+                height: 64px;
+                background: linear-gradient(135deg, #667eea, #764ba2);
+                border-radius: 16px;
+                margin: 0 auto 24px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                color: white;
+                font-size: 24px;
+            }}
+            
+            h2 {{
+                color: #2d3748;
+                font-size: 24px;
+                font-weight: 700;
+                margin-bottom: 24px;
+                text-align: center;
+            }}
+            
+            .form-group {{
+                margin-bottom: 24px;
+            }}
+            
+            label {{
+                display: block;
+                color: #4a5568;
+                font-size: 14px;
+                font-weight: 600;
+                margin-bottom: 8px;
+            }}
+            
+            select {{
+                width: 100%;
+                padding: 12px 16px;
+                border: 2px solid #e2e8f0;
+                border-radius: 8px;
+                font-size: 16px;
+                background: white;
+                transition: border-color 0.3s ease;
+            }}
+            
+            select:focus {{
+                outline: none;
+                border-color: #667eea;
+                box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+            }}
+            
+            .btn {{
+                width: 100%;
+                background: linear-gradient(135deg, #667eea, #764ba2);
+                color: white;
+                border: none;
+                border-radius: 8px;
+                padding: 14px;
+                font-size: 16px;
+                font-weight: 600;
+                cursor: pointer;
+                transition: all 0.3s ease;
+            }}
+            
+            .btn:hover {{
+                transform: translateY(-1px);
+                box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="logo">📋</div>
+            <h2>Select Your Inventory Sheet</h2>
+            <form method="post" action="/select-sheet">
+                <div class="form-group">
+                    <label for="sheet_id">Choose your Google Sheet:</label>
+                    <select name="sheet_id" id="sheet_id">{options}</select>
+                </div>
+                <input type="hidden" name="refresh_token" value="{encrypted}" />
+                <button type="submit" class="btn">Save Configuration</button>
+            </form>
+        </div>
+    </body>
+    </html>
     """
     return HTMLResponse(html)
 
@@ -118,5 +310,94 @@ async def select_sheet(sheet_id: str = Form(...), refresh_token: str = Form(...)
     }
     with open("connection.json", "w") as f:
         json.dump(data, f)
-    html = "<h3>Saved! You can now talk to the inventory agent (Chainlit) and it will use that sheet.</h3>"
+    html = """
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Configuration Saved</title>
+        <style>
+            * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+            }
+            
+            body {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                min-height: 100vh;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+            
+            .container {
+                background: white;
+                border-radius: 16px;
+                box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+                padding: 40px;
+                text-align: center;
+                max-width: 500px;
+                width: 90%;
+            }
+            
+            .success-icon {
+                width: 80px;
+                height: 80px;
+                background: linear-gradient(135deg, #48bb78, #38a169);
+                border-radius: 50%;
+                margin: 0 auto 24px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                color: white;
+                font-size: 36px;
+            }
+            
+            h2 {
+                color: #2d3748;
+                font-size: 24px;
+                font-weight: 700;
+                margin-bottom: 16px;
+            }
+            
+            p {
+                color: #718096;
+                font-size: 16px;
+                line-height: 1.6;
+                margin-bottom: 32px;
+            }
+            
+            .btn {
+                background: linear-gradient(135deg, #667eea, #764ba2);
+                color: white;
+                border: none;
+                border-radius: 8px;
+                padding: 12px 24px;
+                font-size: 14px;
+                font-weight: 600;
+                text-decoration: none;
+                display: inline-block;
+                transition: all 0.3s ease;
+                cursor: pointer;
+            }
+            
+            .btn:hover {
+                transform: translateY(-1px);
+                box-shadow: 0 6px 15px rgba(102, 126, 234, 0.4);
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="success-icon">✓</div>
+            <h2>Configuration Saved!</h2>
+            <p>Your inventory sheet has been successfully connected. You can now use the MCP client to query your inventory data with AI-powered assistance.</p>
+            <a href="/" class="btn">Return to Dashboard</a>
+        </div>
+    </body>
+    </html>
+    """
     return HTMLResponse(html)
