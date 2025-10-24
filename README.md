@@ -1,3 +1,7 @@
+## In this branch we are:
+# Asking the user to set their order sheet as well, other than the inventory sheet 
+# adding a tool to update inventory and add the order to order sheet for order tracking
+
 # 🏗️ **MCP-Demo Application Explained**
 
 Think of your application like a **restaurant system** where:
