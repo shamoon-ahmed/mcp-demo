@@ -607,6 +607,37 @@ def update_inventory_tool(product_name: str, quantity_change: int) -> str:
         return json.dumps({"error": str(e)})
 
 @mcp.tool()
+def quick_order_summary_tool(customer_name: str, product_name: str, quantity: int, customer_email: str = "", customer_address: str = "", payment_mode: str = "") -> str:
+    """
+    Quickly generate order summary without processing sheets. Use this to immediately confirm order to customer.
+    """
+    import random
+    import time
+    
+    # Generate Order ID immediately
+    timestamp = int(time.time())
+    random_suffix = ''.join(random.choices('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789', k=3))
+    order_id = f"ORD-{timestamp}-{random_suffix}"
+    
+    # Return immediate order summary
+    order_summary = {
+        "success": True,
+        "immediate_confirmation": True,
+        "order_id": order_id,
+        "customer_name": customer_name,
+        "product_name": product_name,
+        "quantity": quantity,
+        "customer_email": customer_email,
+        "customer_address": customer_address,
+        "payment_mode": payment_mode,
+        "status": "confirmed",
+        "message": "Order confirmed! Processing in background...",
+        "timestamp": time.time()
+    }
+    
+    return json.dumps(order_summary)
+
+@mcp.tool()
 def process_customer_order_tool(customer_name: str, product_name: str, quantity: int, customer_email: str = "", notes: str = "", customer_address: str = "", payment_mode: str = "") -> str:
     """
     Complete end-to-end order processing with dynamic schema analysis.

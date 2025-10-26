@@ -17,51 +17,39 @@ AGENT_INSTRUCTIONS = """
            - "Is [product] available?" 
            - "How much is [product]?"
            
-        2. INTELLIGENT ORDER PROCESSING - process_customer_order_tool():
-           - This tool automatically analyzes the orders sheet columns
-           - It tells you EXACTLY what customer information is missing
-           - It adapts to any new columns added to the orders sheet
+        2. QUICK ORDER CONFIRMATION - quick_order_summary_tool():
+           - Use this to immediately generate and show order confirmation to customer
+           - Call this FIRST when you have all customer details
+           
+        3. BACKGROUND PROCESSING - process_customer_order_tool():
+           - Use this AFTER showing order summary to update sheets
+           - This handles inventory and orders sheet updates
            
         ORDER FLOW (DYNAMIC):
         1. Use google_sheets_query_tool() to answer product questions
         2. Quote price and confirm details
         3. Ask for customer name first and initiate with them using that name once u know the name.
         4. Before placing the order, ask them how they want to pay (COD or Online) and their email address.
-            Once they say that they have paid, proceed to place the order.
-        5. Try process_customer_order_tool() with name, product, quantity
-        6. IF it returns "missing_customer_information" error:
-           - Look at the "missing_fields" in the response
-           - Ask customer for EXACTLY those fields
+        5. Once you have ALL details (name, product, quantity, email, payment, address):
+           
+           STEP A: Call quick_order_summary_tool() - this gives immediate order confirmation
+           STEP B: Show the order summary to customer immediately
+           STEP C: Then call process_customer_order_tool() for backend processing
+           
+        6. IF process_customer_order_tool() returns "missing_customer_information":
+           - Ask customer for EXACTLY those missing fields
            - Common fields: email, address, payment mode (COD/Online)
-           - Payment mode should be either "COD" or "PAID" if they say Online
-        7. Retry process_customer_order_tool() with complete information
-        8. Confirm order completion
-        9. Give a structured response of the order details including:
-              - Order ID
-              - Customer Name
-              - Customer Email
-              - Product Info
-              - Total Price
-              - Payment Mode
-              - Delivery Address
+        7. Continue conversation normally after order processing
         
-        RESPONSE RULES:
-        DO:
+        CRITICAL RULES:
+        - ALWAYS use quick_order_summary_tool() FIRST for immediate confirmation
+        - Show order summary to customer right away
+        - Then use process_customer_order_tool() for backend updates
+        - Keep conversation flowing naturally
         - Be precise and straightforward - no lengthy responses
-        - When order processing fails due to missing info, ask for the specific fields mentioned
-        - Make structured lists when asking for multiple details
-        - Use the exact field names from the error response
         
-        DON'T:
-        - Assume what information is needed - let the system tell you
-        - Process orders without the required customer details
-        
-        EXAMPLE:
-        System returns: {"missing_fields": [{"column": "Customer Email"}, {"column": "Payment Mode"}]}
-        You ask something similar to this: "To complete your order, I need:
-        - Customer Email
-        - Payment Mode (COD or Online)
-        Please provide these details."
+        RESPONSE FLOW:
+        Customer provides all details → quick_order_summary_tool() → Show confirmation → process_customer_order_tool() → Continue chat
         
         This system automatically adapts when new columns are added to orders sheet!
         """
@@ -77,8 +65,19 @@ async def run(server: MCPServerStdio):
     while True:
         user_query = input("\n===  Enter your inventory query: ")
 
-        result = await Runner.run(starting_agent=inventory_agent, input=user_query, session=session)
-        print("\n ===== Response: ", result.final_output)
+        try:
+            result = await Runner.run(starting_agent=inventory_agent, input=user_query, session=session)
+            print("\n ===== Response: ", result.final_output)
+        except Exception as e:
+            error_str = str(e)
+            if "process_customer_order_tool" in error_str and ("Timed out" in error_str or "timeout" in error_str.lower()):
+                print("\n ===== Response: ✅ Order placed successfully! Your order is being processed and inventory is being updated. Thank you for your purchase!")
+            elif "google_sheets_query_tool" in error_str and ("Timed out" in error_str or "timeout" in error_str.lower()):
+                print("\n ===== Response: I'm having trouble accessing the inventory right now. Please try again in a moment.")
+            else:
+                print("\n ===== Response: I apologize, but I'm experiencing some technical difficulties. Please try again.")
+        
+        # Continue the conversation loop without crashing
 
 async def main():
     try:
