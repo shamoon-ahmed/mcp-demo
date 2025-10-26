@@ -10,7 +10,7 @@ from cryptography.fernet import Fernet
 from dotenv import load_dotenv
 
 load_dotenv()
-BASE_URL = os.getenv("BASE_URL", "http://127.0.0.1:8000")
+BASE_URL = os.getenv("BASE_URL", "http://localhost:8000")
 FERNET_KEY = os.getenv("FERNET_KEY")
 
 # Load Google credentials from client secret file
