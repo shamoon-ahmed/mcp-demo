@@ -161,43 +161,104 @@ def smart_column_detection(data_row, column_type):
     
     return result
 
-def get_sheet_data(service, workbook_id, worksheet_name):
+def get_sheet_data(service, workbook_id, worksheet_name, conn_data=None):
     """Helper function to get data from a specific worksheet"""
     print(f"[DEBUG] Getting data from workbook {workbook_id}, worksheet {worksheet_name}")
     
-    # Get all data from the specified worksheet
-    range_name = f"{worksheet_name}!A1:Z1000"  # Reasonable range
-    
-    res = service.spreadsheets().values().get(
-        spreadsheetId=workbook_id, 
-        range=range_name,
-        valueRenderOption='UNFORMATTED_VALUE'
-    ).execute()
-    
-    rows = res.get("values", [])
-    
-    if not rows:
-        return {"headers": [], "data": [], "row_count": 0}
+    # Check if we have stored table structure
+    table_structure = None
+    if conn_data:
+        # Find which sheet this is (inventory or orders)
+        inventory_config = conn_data.get("inventory", {})
+        orders_config = conn_data.get("orders", {})
         
-    # Use first row as headers
-    headers = rows[0] if rows else []
-    data_rows = rows[1:] if len(rows) > 1 else []
+        if inventory_config.get("worksheet_name") == worksheet_name:
+            table_structure = inventory_config.get("table_structure")
+            print(f"[DEBUG] Using stored inventory table structure")
+        elif orders_config.get("worksheet_name") == worksheet_name:
+            table_structure = orders_config.get("table_structure")
+            print(f"[DEBUG] Using stored orders table structure")
     
-    # Convert to list of dictionaries using headers
-    sheet_data = []
-    for row in data_rows:
-        # Skip completely empty rows
-        if not any(cell for cell in row if str(cell).strip()):
-            continue
+    if table_structure:
+        # Use stored structure for precise data reading
+        start_row = table_structure.get("start_row", 0) + 1  # Convert to 1-based
+        start_col = table_structure.get("start_col", 0) + 1  # Convert to 1-based
+        headers = table_structure.get("headers", [])
+        
+        # Calculate range based on stored structure
+        start_col_letter = chr(64 + start_col)  # Convert to column letter
+        end_col_letter = chr(64 + start_col + len(headers) - 1)
+        range_name = f"{worksheet_name}!{start_col_letter}{start_row + 1}:{end_col_letter}1000"  # Skip header row
+        
+        print(f"[DEBUG] Using stored structure range: {range_name}")
+        print(f"[DEBUG] Headers from structure: {headers}")
+        
+        res = service.spreadsheets().values().get(
+            spreadsheetId=workbook_id, 
+            range=range_name,
+            valueRenderOption='UNFORMATTED_VALUE'
+        ).execute()
+        
+        rows = res.get("values", [])
+        
+        # Convert to list of dictionaries using stored headers
+        sheet_data = []
+        for row in rows:
+            # Skip completely empty rows
+            if not any(cell for cell in row if str(cell).strip()):
+                continue
+                
+            row_dict = {}
+            for i, header in enumerate(headers):
+                # Get cell value or empty string if column doesn't exist in this row
+                cell_value = row[i] if i < len(row) else ""
+                row_dict[header] = str(cell_value).strip() if cell_value else ""
             
-        row_dict = {}
-        for i, header in enumerate(headers):
-            # Get cell value or empty string if column doesn't exist in this row
-            cell_value = row[i] if i < len(row) else ""
-            # Clean header name (remove spaces, special chars for cleaner keys)
-            clean_header = str(header).strip().lower().replace(' ', '_').replace('-', '_')
-            if clean_header:  # Only add if header is not empty
-                row_dict[clean_header] = str(cell_value).strip() if cell_value else ""
+            sheet_data.append(row_dict)
+        
+        return {
+            'headers': headers,
+            'data': sheet_data,
+            'row_count': len(sheet_data)
+        }
+    
+    else:
+        # Fallback to old method if no stored structure
+        print(f"[DEBUG] No stored structure found, using fallback method")
+        
+        # Get all data from the specified worksheet
+        range_name = f"{worksheet_name}!A1:Z1000"  # Reasonable range
+        
+        res = service.spreadsheets().values().get(
+            spreadsheetId=workbook_id, 
+            range=range_name,
+            valueRenderOption='UNFORMATTED_VALUE'
+        ).execute()
+        
+        rows = res.get("values", [])
+        
+        if not rows:
+            return {"headers": [], "data": [], "row_count": 0}
+            
+        # Use first row as headers
+        headers = rows[0] if rows else []
+        data_rows = rows[1:] if len(rows) > 1 else []
+        
+        # Convert to list of dictionaries using headers
+        sheet_data = []
+        for row in data_rows:
+            # Skip completely empty rows
+            if not any(cell for cell in row if str(cell).strip()):
+                continue
+                
+            row_dict = {}
+            for i, header in enumerate(headers):
+                # Get cell value or empty string if column doesn't exist in this row
+                cell_value = row[i] if i < len(row) else ""
+                # Clean header name (remove spaces, special chars for cleaner keys)
+                clean_header = str(header).strip().lower().replace(' ', '_').replace('-', '_')
+                if clean_header:  # Only add if header is not empty
+                    row_dict[clean_header] = str(cell_value).strip() if cell_value else ""
         
         if row_dict:  # Only add if row has some data
             sheet_data.append(row_dict)
@@ -600,14 +661,16 @@ def process_customer_order_tool(customer_name: str, product_name: str, quantity:
         inventory_data = get_sheet_data(
             service, 
             inventory_config["workbook_id"], 
-            inventory_config["worksheet_name"]
+            inventory_config["worksheet_name"],
+            conn
         )
         
         # Step 2: Get orders sheet schema for dynamic column analysis
         orders_data = get_sheet_data(
             service,
             orders_config["workbook_id"],
-            orders_config["worksheet_name"]
+            orders_config["worksheet_name"],
+            conn
         )
         orders_headers = orders_data["headers"]
         
@@ -669,54 +732,29 @@ def process_customer_order_tool(customer_name: str, product_name: str, quantity:
         }
         
         # Analyze each column in orders sheet
+        print(f"[DEBUG] Orders headers: {orders_headers}")
         for header in orders_headers:
             clean_header = header.lower().replace(' ', '_').replace('(', '').replace(')', '').replace('-', '_')
+            print(f"[DEBUG] Processing header: '{header}' -> clean: '{clean_header}'")
             filled = False
             value = ""
             
-            # Try to fill from inventory data first
-            inventory_mappings = {
-                "item_name": product_details.get("product_name", product_name),
-                "product_name": product_details.get("product_name", product_name),
-                "size": product_details.get("size", ""),
-                "color": product_details.get("color", ""),
-                "colour": product_details.get("color", ""),
-                "price": product_details.get("price", ""),
-                "price_pkr": product_details.get("price", ""),
-                "unit_price": product_details.get("price", ""),
-                "cost": product_details.get("price", ""),
-                "category": product_details.get("category", ""),
-                "weight": product_details.get("weight", ""),
-                "description": product_details.get("description", "")
-            }
+            # For customer-specific fields, try customer data first
+            customer_priority_fields = ["customer_name", "customer_email", "customer_address", "address", "delivery", "payment_mode", "payment", "mode"]
             
-            # Check if this column can be filled from inventory
-            for inv_key, inv_value in inventory_mappings.items():
-                if inv_key in clean_header and inv_value:
-                    value = inv_value
-                    filled = True
-                    break
-            
-            # If not filled from inventory, try customer-provided data
-            if not filled:
+            if any(field in clean_header for field in customer_priority_fields):
+                # Try customer data first for customer fields
                 customer_mappings = {
                     "customer_name": customer_provided_data["customer_name"],
-                    "name": customer_provided_data["customer_name"],
+                    "customer": customer_provided_data["customer_name"],
                     "customer_email": customer_provided_data["customer_email"],
                     "email": customer_provided_data["customer_email"],
                     "customer_address": customer_provided_data["customer_address"],
                     "address": customer_provided_data["customer_address"],
+                    "delivery": customer_provided_data["customer_address"],
                     "payment_mode": customer_provided_data["payment_mode"],
                     "payment": customer_provided_data["payment_mode"],
                     "mode": customer_provided_data["payment_mode"],
-                    "notes": customer_provided_data["notes"],
-                    "note": customer_provided_data["notes"],
-                    "quantity": customer_provided_data["quantity"],
-                    "qty": customer_provided_data["quantity"],
-                    "status": customer_provided_data["status"],
-                    "order_id": customer_provided_data["order_id"],
-                    "order_no": customer_provided_data["order_id"],
-                    "order_number": customer_provided_data["order_id"]
                 }
                 
                 for cust_key, cust_value in customer_mappings.items():
@@ -724,24 +762,65 @@ def process_customer_order_tool(customer_name: str, product_name: str, quantity:
                         if cust_value:
                             value = cust_value
                             filled = True
-                        else:
-                            # Mark as missing customer info if not provided
-                            missing_customer_info.append({
-                                "column": header,
-                                "field_type": cust_key,
-                                "description": f"Please provide {header}"
-                            })
+                            print(f"[DEBUG] Filled '{header}' from customer data: {cust_key} = {cust_value}")
+                        break
+            
+            # If not filled from customer data, try inventory data
+            if not filled:
+                inventory_mappings = {
+                    "item_name": product_details.get("product_name", product_name),
+                    "product_name": product_details.get("product_name", product_name),
+                    "name": product_details.get("product_name", product_name),
+                    "size": product_details.get("size", ""),
+                    "color": product_details.get("color", ""),
+                    "colour": product_details.get("color", ""),
+                    "price": product_details.get("price", ""),
+                    "price_pkr": product_details.get("price", ""),
+                    "unit_price": product_details.get("price", ""),
+                    "cost": product_details.get("price", ""),
+                    "category": product_details.get("category", ""),
+                    "weight": product_details.get("weight", ""),
+                    "description": product_details.get("description", "")
+                }
+                
+                # Check if this column can be filled from inventory
+                for inv_key, inv_value in inventory_mappings.items():
+                    if inv_key in clean_header and inv_value:
+                        value = inv_value
+                        filled = True
+                        print(f"[DEBUG] Filled '{header}' from inventory: {inv_key} = {inv_value}")
+                        break
+            
+            # If still not filled, try remaining customer data fields
+            if not filled:
+                remaining_customer_mappings = {
+                    "notes": customer_provided_data["notes"],
+                    "note": customer_provided_data["notes"],
+                    "quantity": customer_provided_data["quantity"],
+                    "qty": customer_provided_data["quantity"],
+                    "status": customer_provided_data["status"],
+                    "order_id": customer_provided_data["order_id"],
+                    "order_no": customer_provided_data["order_id"],
+                    "order": customer_provided_data["order_id"],
+                    "order_number": customer_provided_data["order_id"]
+                }
+                
+                for cust_key, cust_value in remaining_customer_mappings.items():
+                    if cust_key in clean_header:
+                        if cust_value:
+                            value = cust_value
+                            filled = True
+                            print(f"[DEBUG] Filled '{header}' from customer data: {cust_key} = {cust_value}")
                         break
             
             # If still not filled, add empty value but note it's missing
-            if not filled and header not in [info["column"] for info in missing_customer_info]:
-                missing_customer_info.append({
-                    "column": header,
-                    "field_type": "unknown",
-                    "description": f"Unable to determine how to fill '{header}'"
-                })
+            if not filled:
+                print(f"[DEBUG] Could not map column '{header}' - adding as empty")
             
             order_row_data.append(value)
+            print(f"[DEBUG] Final value for '{header}': '{value}'")
+        
+        print(f"[DEBUG] Complete order row data: {order_row_data}")
         
         # Step 5: Check if we have all required customer information
         if missing_customer_info:
@@ -778,14 +857,38 @@ def process_customer_order_tool(customer_name: str, product_name: str, quantity:
                 body={"values": [[str(new_quantity)]]}
             ).execute()
         
-        # Step 7: Add order to orders sheet
-        service.spreadsheets().values().append(
+        # Step 7: Add order to orders sheet using stored table structure
+        print(f"[DEBUG] Adding order to sheet: {orders_config['worksheet_name']}")
+        print(f"[DEBUG] Order data: {order_row_data}")
+        
+        # Get stored table structure for proper positioning
+        orders_table_structure = orders_config.get("table_structure", {})
+        start_row = orders_table_structure.get("start_row", 0)  # 0-based from storage
+        start_col = orders_table_structure.get("start_col", 0)  # 0-based from storage
+        headers = orders_table_structure.get("headers", [])
+        
+        # Calculate the correct range for appending
+        # Convert to 1-based for Google Sheets API
+        start_col_letter = chr(65 + start_col)  # Convert to column letter (A=0, B=1, etc.)
+        end_col_letter = chr(65 + start_col + len(headers) - 1)
+        
+        # Use the table range for appending (this will append after existing data)
+        append_range = f"{orders_config['worksheet_name']}!{start_col_letter}:{end_col_letter}"
+        
+        print(f"[DEBUG] Using stored table structure:")
+        print(f"[DEBUG]   start_row: {start_row}, start_col: {start_col}")
+        print(f"[DEBUG]   Headers: {headers}")
+        print(f"[DEBUG]   Append range: {append_range}")
+        
+        append_result = service.spreadsheets().values().append(
             spreadsheetId=orders_config["workbook_id"],
-            range=f"{orders_config['worksheet_name']}!A:{chr(64 + len(orders_headers))}",
+            range=append_range,
             valueInputOption="RAW",
             insertDataOption="INSERT_ROWS",
             body={"values": [order_row_data]}
         ).execute()
+        
+        print(f"[DEBUG] Order appended successfully: {append_result}")
         
         return json.dumps({
             "success": True,
@@ -834,7 +937,8 @@ def google_sheets_query_tool(query: str) -> str:
         inventory_data = get_sheet_data(
             service, 
             inventory_config["workbook_id"], 
-            inventory_config["worksheet_name"]
+            inventory_config["worksheet_name"],
+            conn
         )
         
         return json.dumps({

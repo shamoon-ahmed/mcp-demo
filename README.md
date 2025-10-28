@@ -1,5 +1,10 @@
 ## THIS IS THE PROGRESS SO FAR - THIS SYSTEM WORKS FINE!
 
+### LATEST VERSION
+### In this version, the agent updates the inventory perfectly but when appending, it either doesn't append email or just appends customers email in column of email. 
+### This is dynamic. Means however the data looks in the sheets, our system will fetch that info from the sheets and will work with it.
+### Also this version doesn't really work with businesses that doesn't have a numeric stock like restaurants or food business.
+
 # 🏗️ **Complete System Overview: Dynamic Customer Service Automation Platform**
 
 ## 🎯 **System Purpose & Vision**

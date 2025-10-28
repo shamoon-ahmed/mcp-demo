@@ -558,21 +558,271 @@ async def setup_sheets(
     orders_worksheet: str = Form(...),
     refresh_token: str = Form(...)
 ):
-    # Save enhanced configuration with both inventory and orders sheets
-    data = {
-        "inventory": {
+    try:
+        print("🔄 Setting up sheets with table structure analysis...")
+        
+        # Import table analyzer
+        from table_analyzer import TableStructureAnalyzer, save_structure_to_connection
+        
+        # Build Google Sheets service
+        creds = Credentials(
+            token=None,
+            refresh_token=refresh_token,
+            token_uri="https://oauth2.googleapis.com/token",
+            client_id=GOOGLE_CLIENT_ID,
+            client_secret=GOOGLE_CLIENT_SECRET,
+            scopes=SCOPES
+        )
+        creds.refresh(GoogleRequest())
+        service = build("sheets", "v4", credentials=creds)
+        
+        print(f"📊 Analyzing inventory sheet: {inventory_worksheet}")
+        inventory_structure = TableStructureAnalyzer.analyze_sheet_structure(
+            service, inventory_workbook, inventory_worksheet
+        )
+        
+        print(f"📋 Analyzing orders sheet: {orders_worksheet}")
+        orders_structure = TableStructureAnalyzer.analyze_sheet_structure(
+            service, orders_workbook, orders_worksheet
+        )
+        
+        # Check for analysis errors
+        if "error" in inventory_structure:
+            raise Exception(f"Inventory sheet analysis failed: {inventory_structure['error']}")
+        
+        if "error" in orders_structure:
+            raise Exception(f"Orders sheet analysis failed: {orders_structure['error']}")
+        
+        # Save complete configuration with table structures
+        inventory_config = {
             "workbook_id": inventory_workbook,
             "worksheet_name": inventory_worksheet
-        },
-        "orders": {
+        }
+        
+        orders_config = {
             "workbook_id": orders_workbook,
             "worksheet_name": orders_worksheet
-        },
-        "refresh_token": refresh_token
-    }
-    
-    with open("connection.json", "w") as f:
-        json.dump(data, f, indent=2)
+        }
+        
+        connection_data = save_structure_to_connection(
+            inventory_structure, orders_structure, refresh_token,
+            inventory_config, orders_config
+        )
+        
+        print("✅ Configuration complete with table structure analysis!")
+        
+        # Success response with structure info
+        inventory_cols = len(inventory_structure.get("headers", []))
+        orders_cols = len(orders_structure.get("headers", []))
+        inventory_business = inventory_structure.get("business_type", "unknown")
+        
+        html = f"""
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Configuration Complete</title>
+            <style>
+                * {{
+                    margin: 0;
+                    padding: 0;
+                    box-sizing: border-box;
+                }}
+                
+                body {{
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    min-height: 100vh;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                }}
+                
+                .container {{
+                    background: white;
+                    border-radius: 16px;
+                    box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+                    padding: 40px;
+                    text-align: center;
+                    max-width: 600px;
+                    width: 90%;
+                }}
+                
+                .success-icon {{
+                    width: 64px;
+                    height: 64px;
+                    background: linear-gradient(135deg, #4CAF50, #45a049);
+                    border-radius: 50%;
+                    margin: 0 auto 24px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    color: white;
+                    font-size: 32px;
+                }}
+                
+                h1 {{
+                    color: #333;
+                    margin-bottom: 16px;
+                    font-size: 28px;
+                }}
+                
+                .success-message {{
+                    color: #666;
+                    margin-bottom: 32px;
+                    font-size: 16px;
+                    line-height: 1.5;
+                }}
+                
+                .structure-info {{
+                    background: #f8f9fa;
+                    border-radius: 12px;
+                    padding: 24px;
+                    margin-bottom: 32px;
+                    text-align: left;
+                }}
+                
+                .structure-info h3 {{
+                    color: #333;
+                    margin-bottom: 16px;
+                    font-size: 18px;
+                }}
+                
+                .info-row {{
+                    display: flex;
+                    justify-content: space-between;
+                    margin-bottom: 8px;
+                    padding: 8px 0;
+                    border-bottom: 1px solid #eee;
+                }}
+                
+                .info-row:last-child {{
+                    border-bottom: none;
+                }}
+                
+                .label {{
+                    font-weight: 600;
+                    color: #555;
+                }}
+                
+                .value {{
+                    color: #333;
+                }}
+                
+                .business-type {{
+                    display: inline-block;
+                    background: linear-gradient(135deg, #667eea, #764ba2);
+                    color: white;
+                    padding: 4px 12px;
+                    border-radius: 20px;
+                    font-size: 14px;
+                    text-transform: capitalize;
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="success-icon">✓</div>
+                <h1>Configuration Complete!</h1>
+                <p class="success-message">
+                    Your Google Sheets have been configured successfully with intelligent table structure analysis.
+                    The system now understands your business data layout and can process orders automatically.
+                </p>
+                
+                <div class="structure-info">
+                    <h3>📊 Analysis Summary</h3>
+                    <div class="info-row">
+                        <span class="label">Business Type:</span>
+                        <span class="value"><span class="business-type">{inventory_business}</span></span>
+                    </div>
+                    <div class="info-row">
+                        <span class="label">Inventory Columns:</span>
+                        <span class="value">{inventory_cols} columns detected</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="label">Orders Columns:</span>
+                        <span class="value">{orders_cols} columns detected</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="label">System Status:</span>
+                        <span class="value">Ready for customer orders</span>
+                    </div>
+                </div>
+                
+                <p style="color: #666; font-size: 14px;">
+                    Your MCP server can now process orders for any customer with accurate data mapping.
+                    The system will automatically place order details in the correct columns.
+                </p>
+            </div>
+        </body>
+        </html>
+        """
+        
+        return HTMLResponse(html)
+        
+    except Exception as e:
+        print(f"❌ Configuration error: {e}")
+        
+        # Error response
+        error_html = f"""
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Configuration Error</title>
+            <style>
+                body {{
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                    background: linear-gradient(135deg, #ff6b6b 0%, #ee5a52 100%);
+                    min-height: 100vh;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    margin: 0;
+                }}
+                
+                .container {{
+                    background: white;
+                    border-radius: 16px;
+                    box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+                    padding: 40px;
+                    text-align: center;
+                    max-width: 500px;
+                    width: 90%;
+                }}
+                
+                .error-icon {{
+                    width: 64px;
+                    height: 64px;
+                    background: #ff6b6b;
+                    border-radius: 50%;
+                    margin: 0 auto 24px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    color: white;
+                    font-size: 32px;
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="error-icon">✗</div>
+                <h1 style="color: #333; margin-bottom: 16px;">Configuration Error</h1>
+                <p style="color: #666; margin-bottom: 24px;">
+                    There was an error analyzing your sheet structure: {str(e)}
+                </p>
+                <p style="color: #666; font-size: 14px;">
+                    Please make sure your sheets have proper table headers and try again.
+                </p>
+            </div>
+        </body>
+        </html>
+        """
+        
+        return HTMLResponse(error_html)
     
     html = """
     <!DOCTYPE html>
