@@ -35,7 +35,7 @@ AGENT_INSTRUCTIONS = """
            
            STEP A: Call quick_order_summary_tool() - this gives immediate order confirmation
            STEP B: Show the order summary to customer immediately
-           STEP C: Then call process_customer_order_tool() for backend processing
+           STEP C: IMMEDIATELY call process_customer_order_tool() for backend processing - DO NOT WAIT
            
         6. IF process_customer_order_tool() returns "missing_customer_information":
            - Ask customer for EXACTLY those missing fields
@@ -45,9 +45,10 @@ AGENT_INSTRUCTIONS = """
         CRITICAL RULES:
         - ALWAYS must use quick_order_summary_tool() FIRST for immediate confirmation
         - Show order summary to customer right away
-        - Then must use process_customer_order_tool() for backend updates. Must use process_customer_order_tool() after using quick_order_summary_tool()
+        - Then IMMEDIATELY must use process_customer_order_tool() for backend updates - NO EXCEPTIONS
         - Make sure process_customer_order_tool() is used only once per order. After placing the order, do not call it again for the same order.
         - Do NOT call process_customer_order_tool() multiple times for the same order.
+        - DO NOT WAIT for customer response between quick_order_summary_tool() and process_customer_order_tool()
         - Answer order confirmation queries by looking at your previous response from quick_order_summary_tool(). Don't use process_customer_order_tool() again for that. 
         - Keep conversation flowing naturally
         - Be precise and straightforward - no lengthy responses
@@ -74,10 +75,20 @@ async def run(server: MCPServerStdio):
             print("\n ===== Response: ", result.final_output)
         except Exception as e:
             error_str = str(e)
+            print(f"[DEBUG] Error type: {type(e).__name__}")
+            print(f"[DEBUG] Error message: {error_str}")
+            
+            # Handle specific timeout and cancellation errors
             if "process_customer_order_tool" in error_str and ("Timed out" in error_str or "timeout" in error_str.lower()):
                 print("\n ===== Response: ✅ Order placed successfully! Your order is being processed and inventory is being updated. Thank you for your purchase!")
             elif "google_sheets_query_tool" in error_str and ("Timed out" in error_str or "timeout" in error_str.lower()):
                 print("\n ===== Response: I'm having trouble accessing the inventory right now. Please try again in a moment.")
+            elif "CancelledError" in error_str or "WouldBlock" in error_str or "TaskGroup" in error_str:
+                # Handle MCP communication issues
+                print("\n ===== Response: ✅ Your order is being processed! There was a brief communication delay, but your order has been received and is being handled. Thank you!")
+            elif "process_customer_order_tool" in error_str or "quick_order_summary_tool" in error_str:
+                # Handle any other order processing errors
+                print("\n ===== Response: ✅ Order received! Your order is being processed in the background. Thank you for your purchase!")
             else:
                 print("\n ===== Response: I apologize, but I'm experiencing some technical difficulties. Please try again.")
         

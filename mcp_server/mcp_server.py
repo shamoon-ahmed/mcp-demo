@@ -674,11 +674,18 @@ def process_customer_order_tool(customer_name: str, product_name: str, quantity:
         )
         orders_headers = orders_data["headers"]
         
-        # Step 3: Find product and extract inventory details
+        # Step 3: Check if inventory has quantity tracking first
+        inventory_headers = inventory_data["headers"]
+        has_quantity_column = any("quantity" in header.lower() or "stock" in header.lower() or "available" in header.lower() for header in inventory_headers)
+        print(f"[DEBUG] Inventory headers: {inventory_headers}")
+        print(f"[DEBUG] Has quantity tracking: {has_quantity_column}")
+        
+        # Step 4: Find product and extract inventory details
         product_found = False
         available_quantity = 0
         product_row_index = -1
         product_details = {}
+        product_detected_cols = {}
         
         for idx, item in enumerate(inventory_data["data"]):
             detected_cols = smart_column_detection(item, "all")
@@ -688,13 +695,14 @@ def process_customer_order_tool(customer_name: str, product_name: str, quantity:
                 if product_name.lower() in product_value.lower():
                     product_found = True
                     product_row_index = idx + 2
+                    product_detected_cols = detected_cols  # Store for later use
                     
                     # Extract all available product details
                     for col_type, col_info in detected_cols.items():
                         product_details[col_type] = str(col_info["value"]) if col_info["value"] else ""
                     
-                    # Ensure we have quantity for stock check
-                    if "quantity" in detected_cols:
+                    # Check quantity only if inventory has quantity tracking
+                    if has_quantity_column and "quantity" in detected_cols:
                         try:
                             available_quantity = int(float(detected_cols["quantity"]["value"])) if detected_cols["quantity"]["value"] else 0
                         except:
@@ -707,15 +715,23 @@ def process_customer_order_tool(customer_name: str, product_name: str, quantity:
                 "error": "product_not_found",
                 "message": f"Product '{product_name}' not found in inventory"
             })
-        
-        if available_quantity < quantity:
-            return json.dumps({
-                "success": False,
-                "error": "insufficient_stock",
-                "message": f"Only {available_quantity} units available, but {quantity} requested",
-                "available_quantity": available_quantity,
-                "requested_quantity": quantity
-            })
+
+        # FIXED: For service/food businesses without stock tracking - make quantity check optional
+        if has_quantity_column:
+            has_quantity_tracking = "quantity" in product_detected_cols and product_detected_cols["quantity"]["value"]
+            print(f"[DEBUG] Product has quantity value: {has_quantity_tracking}, Available: {available_quantity}")
+            
+            if has_quantity_tracking and available_quantity < quantity:
+                return json.dumps({
+                    "success": False,
+                    "error": "insufficient_stock",
+                    "message": f"Only {available_quantity} units available, but {quantity} requested",
+                    "available_quantity": available_quantity,
+                    "requested_quantity": quantity
+                })
+        else:
+            print(f"[DEBUG] No quantity tracking in inventory sheet - treating as service/food business")
+            has_quantity_tracking = False
         
         # Step 4: Dynamic column mapping and customer data analysis
         order_row_data = []
@@ -740,15 +756,15 @@ def process_customer_order_tool(customer_name: str, product_name: str, quantity:
             value = ""
             
             # For customer-specific fields, try customer data first
-            customer_priority_fields = ["customer_name", "customer_email", "customer_address", "address", "delivery", "payment_mode", "payment", "mode"]
+            customer_priority_fields = ["customer_name", "customer_email", "email", "customer_address", "address", "delivery", "payment_mode", "payment", "mode"]
             
             if any(field in clean_header for field in customer_priority_fields):
-                # Try customer data first for customer fields
+                # Try customer data first for customer fields - FIXED: More specific matching
                 customer_mappings = {
-                    "customer_name": customer_provided_data["customer_name"],
-                    "customer": customer_provided_data["customer_name"],
-                    "customer_email": customer_provided_data["customer_email"],
+                    "customer_email": customer_provided_data["customer_email"],  # Check email first
                     "email": customer_provided_data["customer_email"],
+                    "customer_name": customer_provided_data["customer_name"],
+                    "customer": customer_provided_data["customer_name"],  # This should come after email check
                     "customer_address": customer_provided_data["customer_address"],
                     "address": customer_provided_data["customer_address"],
                     "delivery": customer_provided_data["customer_address"],
@@ -765,11 +781,26 @@ def process_customer_order_tool(customer_name: str, product_name: str, quantity:
                             print(f"[DEBUG] Filled '{header}' from customer data: {cust_key} = {cust_value}")
                         break
             
-            # If not filled from customer data, try inventory data
+            # If not filled from customer data, try inventory data and calculations
             if not filled:
+                # Calculate subtotal if we have price and quantity
+                subtotal_value = ""
+                if product_details.get("price"):
+                    try:
+                        # Extract numeric price (remove currency symbols, etc.)
+                        price_str = str(product_details.get("price", ""))
+                        price_numeric = ''.join(c for c in price_str if c.isdigit() or c == '.')
+                        if price_numeric:
+                            unit_price = float(price_numeric)
+                            subtotal_value = str(unit_price * quantity)
+                            print(f"[DEBUG] Calculated subtotal: {unit_price} × {quantity} = {subtotal_value}")
+                    except:
+                        print(f"[DEBUG] Could not calculate subtotal from price: {product_details.get('price')}")
+                
                 inventory_mappings = {
                     "item_name": product_details.get("product_name", product_name),
                     "product_name": product_details.get("product_name", product_name),
+                    "item": product_details.get("product_name", product_name),  # Added for "Item" column
                     "name": product_details.get("product_name", product_name),
                     "size": product_details.get("size", ""),
                     "color": product_details.get("color", ""),
@@ -778,6 +809,8 @@ def process_customer_order_tool(customer_name: str, product_name: str, quantity:
                     "price_pkr": product_details.get("price", ""),
                     "unit_price": product_details.get("price", ""),
                     "cost": product_details.get("price", ""),
+                    "subtotal": subtotal_value,  # Added for "Subtotal" column
+                    "total": subtotal_value,     # Alternative for total/subtotal columns
                     "category": product_details.get("category", ""),
                     "weight": product_details.get("weight", ""),
                     "description": product_details.get("description", "")
@@ -839,23 +872,30 @@ def process_customer_order_tool(customer_name: str, product_name: str, quantity:
                 "instructions": "Please provide the missing information and try the order again"
             })
         
-        # Step 6: Update inventory (reduce stock)
-        new_quantity = available_quantity - quantity
-        quantity_col = None
-        
-        for col_letter, header in enumerate(inventory_data["headers"], start=1):
-            if any(word in header.lower() for word in ["quantity", "qty", "stock"]):
-                quantity_col = chr(64 + col_letter)
-                break
-        
-        if quantity_col and product_row_index > 0:
-            range_name = f"{inventory_config['worksheet_name']}!{quantity_col}{product_row_index}"
-            service.spreadsheets().values().update(
-                spreadsheetId=inventory_config["workbook_id"],
-                range=range_name,
-                valueInputOption="RAW",
-                body={"values": [[str(new_quantity)]]}
-            ).execute()
+        # Step 6: Update inventory (reduce stock) - FIXED: Only for businesses with quantity tracking
+        new_quantity = available_quantity
+        if has_quantity_tracking:
+            new_quantity = available_quantity - quantity
+            quantity_col = None
+            
+            for col_letter, header in enumerate(inventory_data["headers"], start=1):
+                if any(word in header.lower() for word in ["quantity", "qty", "stock"]):
+                    quantity_col = chr(64 + col_letter)
+                    break
+            
+            if quantity_col and product_row_index > 0:
+                range_name = f"{inventory_config['worksheet_name']}!{quantity_col}{product_row_index}"
+                service.spreadsheets().values().update(
+                    spreadsheetId=inventory_config["workbook_id"],
+                    range=range_name,
+                    valueInputOption="RAW",
+                    body={"values": [[str(new_quantity)]]}
+                ).execute()
+                print(f"[DEBUG] Inventory updated: {available_quantity} -> {new_quantity}")
+            else:
+                print(f"[DEBUG] Could not find quantity column for inventory update")
+        else:
+            print(f"[DEBUG] Skipping inventory update - service/food business without stock tracking")
         
         # Step 7: Add order to orders sheet using stored table structure
         print(f"[DEBUG] Adding order to sheet: {orders_config['worksheet_name']}")
